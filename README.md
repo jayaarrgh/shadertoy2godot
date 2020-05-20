@@ -10,3 +10,4 @@ This executable currently creates a folder in current working directory to put a
 # TODO (Future improvement)
 - Convert #defines - both functions and various other const types.
 - Comment out #ifdef to #endif OR create a uniform and use it in the if
+- Maybe a webscraper variant which will pull the code from a shadertoy link?
