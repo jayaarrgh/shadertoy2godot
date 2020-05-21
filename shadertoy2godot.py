@@ -1,7 +1,7 @@
 import os
+import re
 import sys
 # from glob import glob
-
 
 ## Utility to help convert shader toy to godot .shader files
 ## Requires: PYTHON 3
@@ -16,9 +16,6 @@ import sys
     # Need a special method to add a mouse uniform... and it needs a script...
     # s = s.replace('iMouse', 'uMouse') and add a uniform
 
-#TODO #ifdef #endif -- just comment these out :)
-
-    
 if '--help' in sys.argv or '-h' in sys.argv:
     print('\nhelpful message here... :)\n')
     raise SystemExit 
@@ -34,65 +31,70 @@ new_shader_dir = 'shadertoy2godot-shaders'
 if not os.path.exists(new_shader_dir):
     os.makedirs(new_shader_dir)
 
+CONVERSION_TABLE = [
+            ('fragColor', 'COLOR'),
+            ('fragCoord', 'FRAGCOORD.xy'),
+            ('iResolution', '(1.0/SCREEN_PIXEL_SIZE)'),
+            ('iTime', 'TIME'),
+            ('iChannelResolution[4]', '(1.0/TEXTURE_PIXEL_SIZE)'),
+            ('void mainImage.*\n\s*{|void mainImage.*{', 'void fragment() {\n')
+        ]
 
-## WHY NOT JUST A FUNCTION WITH CLOUSURE?
-class ShadertoyLineConverter:
-    CONVERSION_TABLE = [
-                ('fragColor', 'COLOR'),
-                ('fragCoord', 'FRAGCOORD.xy'),
-                ('iResolution', '(1.0/SCREEN_PIXEL_SIZE)'),
-                ('iTime', 'TIME'),
-                ('iChannelResolution[4]', '(1.0/TEXTURE_PIXEL_SIZE)')
-                ]
-    
-    def __init__(self, line):
-       self.line = line
+# compile the conversion table
+COMPILED_CONVERSION_TABLE = [(re.compile(e[0], flags=re.M), e[1]) for e in CONVERSION_TABLE]
 
-    def convert(self):
-        self._convert_mainImage()
-        self._convert_vars()
+
+class ShadertoyConverter:
+    def convert(self, shader_code):
+        self._code = shader_code
+        self._comment_ifdefs()
+        self._sub_conversion_table()
+        self._add_godot_first_line()
         self._convert_defines()
-        self._convert_ifdefs()
-        return self.line
-
-    # TODO: add uniforms for stuff not in REPLACER -- ex: iMouse
-    def _add_uniforms(self):
-       pass
+        return self._code
     
-    def _convert_vars(self):
-        for old, new in ShadertoyLineConverter.CONVERSION_TABLE:
-            self.line = self.line.replace(old, new)
+    def _comment_ifdefs(self):
+        '''Comments if blocks but not else blocks'''
+        # TODO: another option would be to create a uniform for the if VAR and set it to false
+        commenting = False
+        _lines = ""
+        for line in self._code.splitlines(True):
+            if '#if' in line or '#ifdef' in line:
+                commenting = True
+            elif '#endif' in line or "#else" in line:
+                commenting = False
+                _lines += f'// {line}'
+                continue
+            if commenting:
+                _lines += f'// {line}'
+            else:
+                _lines += line
+        self._code = _lines
     
-    def _convert_mainImage(self):
-        if not 'void mainImage' in self.line: return
-        if '{' in self.line:
-            self.line = 'void fragment() {\n'
-        else:
-            self.line = 'void fragment()\n' 
+    def _sub_conversion_table(self):
+        for shadertoy, godot in COMPILED_CONVERSION_TABLE:
+            self._code = shadertoy.sub(godot, self._code) 
 
-    # TODO: Replace defines with const (float, vec2? how do we know?)
+    def _add_godot_first_line(self):
+        self._code = f'shader_type canvas_item;\n{self._code}'
+    
+    # TODO: convert defines
     def _convert_defines(self):
-        if not "#define" in self.line: return
-        if "(" in self.line:  # we are in a function define
-            self._convert_function_define()
-        else:
-            self._convert_typed_define()
+        function_define_regex = "#define.*\(.*" # has a ( in the line 
+        define_regex = "(?!.*[\(])#define.*" # doesnt have a ( in the line
+        self._use_finditer(function_define_regex, 'found a function define')
+        self._use_finditer(define_regex, 'found a define')
 
-    # TODO: comment every line until endif - But then its not in line parser...
-    def _convert_ifdefs(self):
-        if '#ifdef' in self.line or '#endif' in self.line:
-            self.line = f'// {self.line}' # comment out the line
-    
-    def _convert_function_define(self):
-        print('found a function #define - no action taken')
+    def _use_finditer(self, regex, msg):
+        '''Just printing matches for now...'''
+        for match in re.finditer(regex, self._code, re.M):
+            print(f'\n{msg}')
+            print(match.start(), match.end())
+            print(match.group(0))
 
-    def _convert_typed_define(self):
-        print('found a #define - no action taken')
-        # if is defining a const? # letters followed by space followed by numbers?
-        # psedo---type_ = 'float' || 'int' || 'vec2' || 'vec3'
-        # s.replace('#define', f'const {type_}')
-        # s.replace_last_space(' ', '= ')
-
+    # TODO: add uniforms for stuff not in CONVERSION_TABLE -- ex: iMouse
+    def _collect_and_add_uniforms(self):
+       pass
 
 def convert_shadertoy_shaders():
     def is_shader(filepath):
@@ -102,28 +104,23 @@ def convert_shadertoy_shaders():
     def get_shaders(): return [f for f in os.listdir(the_path) if is_shader(f)]
     # shaders = glob(f'{the_path}/*.glsl') + glob(f'{the_path}/*.shader')
     
-    def add_godot_first_line(s): return f'shader_type canvas_item;\n{s}'
+    converter = ShadertoyConverter()
     
     for shader in get_shaders():
-        new_shader_code = ""
         shader_path = os.path.join(the_path, shader)
         print(f'\nopening shader at: {shader_path}')
         with open(shader_path, 'r') as f:
-            for line in f:
-                new_shader_code += ShadertoyLineConverter(line).convert()
-
-        # add the first line
-        new_shader_code = add_godot_first_line(new_shader_code)
+            shader_code = f.read()
         
-        # TODO: loop through again??? to comment out lines between ifdef && endif
-
-        # print(f'\n{new_shader_code}\n')
+        # Run converter
+        shader_code = converter.convert(shader_code)
+        
         # Write the shader to a file
-        shader = shader.replace('.glsl', '.shader')
-        nf = open(os.path.join(new_shader_dir, shader), 'w+')
-        nf.write(new_shader_code)
-        nf.close()
-        print(f'shader: {shader} - successfully converted')
+        shader = shader.replace('.glsl', '.shader')  # convert to .shader ending
+        with open(os.path.join(new_shader_dir, shader), 'w+') as nf:
+            nf.write(shader_code)
+        print(f'\nshader: {shader} - successfully converted')
+
 
 if __name__ == '__main__':
     convert_shadertoy_shaders()
