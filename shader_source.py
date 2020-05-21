@@ -2,7 +2,11 @@ import os
 import requests
 
 
-class GetShaderCode:
+class ShaderToyApiError(Exception):
+    pass
+
+
+class ShadertoyAPI:
     def __init__(self):
         self.api_key = os.environ['API_KEY']
 
@@ -13,8 +17,11 @@ class GetShaderCode:
     def get_shades(self, shader_id):
         response = self._request_shader(shader_id)
         if response.status_code != 200:
-            return None
-        renderpasses = response.json()['Shader']['renderpass']
+            raise response.reason
+        response_json = response.json()
+        if 'Error' in response_json:
+            raise ShaderToyApiError(response_json['Error'])
+        renderpasses = response_json['Shader']['renderpass']
         code = []
         for renderpass in renderpasses:
             code.append(renderpass['code'])
