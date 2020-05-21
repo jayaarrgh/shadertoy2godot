@@ -1,13 +1,11 @@
-from dataclasses import dataclass
-
 import os
 import requests
 
 
-@dataclass
 class GetShaderCode:
-    shade_id: str
-    api_key: str = os.environ['API_KEY']
+    def __init__(self, shader_id):
+        self.shade_id = shader_id
+        self.api_key = os.environ['API_KEY']
 
     def _request_shade(self):
         response = requests.get(f"https://www.shadertoy.com/api/v1/shaders/{self.shade_id}?key={self.api_key}")
