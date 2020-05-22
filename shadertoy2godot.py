@@ -44,6 +44,16 @@ CONVERSION_TABLE = [
 # compile the conversion table
 COMPILED_CONVERSION_TABLE = [(re.compile(e[0], flags=re.M), e[1]) for e in CONVERSION_TABLE]
 
+UNIFORM_TABLE = (('iTimeDelta', 'uniform float iTimeDelta;'),
+        ('iFrame', 'uniform float iFrame;',
+        ('iChannelTime\[4\]', 'uniform float iChannelTime[4];',
+        ('iMouse', 'uniform vec4 iMouse;',
+        ('iDate', 'uniform vec4 iDate;',
+        ('iSampleRate', 'uniform float iSampleRate;',
+        ('iChannel/d', 'uniform sampler2D iChannel%d;'))
+
+def typed_uniform(datatype, name): return f'uniform {datatype} {name};\n'
+
 
 class ShadertoyConverter:
     def convert(self, shader_code):
@@ -79,7 +89,7 @@ class ShadertoyConverter:
     def _add_godot_first_line(self):
         self._code = f'shader_type canvas_item;\n{self._code}'
     
-    # TODO: convert defines
+    # TODO: convert defines or comment out
     def _convert_defines(self):
         function_define_regex = '#define.*\(.*' # has a ( in the line 
         define_regex = '(?!.*[\(])#define.*' # doesnt have a ( in the line
@@ -117,6 +127,7 @@ class GodotShaderCompiler:
             print('ERROR: ', stderr_lines[-4:-2])
         else:
             print('No errors found in compilation')
+
 
 def convert_shadertoy_shaders():
     def is_shader(filepath):
