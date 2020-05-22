@@ -97,6 +97,10 @@ class ShadertoyConverter:
     def _collect_and_add_uniforms(self):
        pass
 
+    # TODO: Use GodotShaderCompiler to remove remaining errors
+    def _fix_compiled_errors():
+        pass
+
 
 class GodotShaderCompiler:
     '''Currently just one static method, but I forsee state, and multiple compiler passes'''
@@ -109,8 +113,10 @@ class GodotShaderCompiler:
                 stderr=subprocess.PIPE)
         stdout, stderr = compiler.communicate()
         stderr_lines = stderr.splitlines(True)
-        print('ERROR: ', stderr_lines[-4:-2])
-
+        if len(stderr_lines) > 4:
+            print('ERROR: ', stderr_lines[-4:-2])
+        else:
+            print('No errors found in compilation')
 
 def convert_shadertoy_shaders():
     def is_shader(filepath):
