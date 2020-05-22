@@ -1,10 +1,11 @@
 import os
 import re
 import sys
+import subprocess
 # from glob import glob
 
 ## Utility to help convert shader toy to godot .shader files
-## Requires: PYTHON 3
+## Requires: PYTHON 3, godot in PATH
 
 ## HOW TO: Copy code from shadertoy into files ending in .shader to get started (what about glsl for glslViewer type files?)
 ## This will not alter the file but create a new folder and put "converted" versions in
@@ -57,11 +58,11 @@ class ShadertoyConverter:
         '''Comments if blocks but not else blocks'''
         # TODO: another option would be to create a uniform for the if VAR and set it to false
         commenting = False
-        _lines = ""
+        _lines = ''
         for line in self._code.splitlines(True):
             if '#if' in line or '#ifdef' in line:
                 commenting = True
-            elif '#endif' in line or "#else" in line:
+            elif '#endif' in line or '#else' in line:
                 commenting = False
                 _lines += f'// {line}'
                 continue
@@ -80,8 +81,8 @@ class ShadertoyConverter:
     
     # TODO: convert defines
     def _convert_defines(self):
-        function_define_regex = "#define.*\(.*" # has a ( in the line 
-        define_regex = "(?!.*[\(])#define.*" # doesnt have a ( in the line
+        function_define_regex = '#define.*\(.*' # has a ( in the line 
+        define_regex = '(?!.*[\(])#define.*' # doesnt have a ( in the line
         self._use_finditer(function_define_regex, 'found a function define')
         self._use_finditer(define_regex, 'found a define')
 
@@ -95,6 +96,21 @@ class ShadertoyConverter:
     # TODO: add uniforms for stuff not in CONVERSION_TABLE -- ex: iMouse
     def _collect_and_add_uniforms(self):
        pass
+
+
+class GodotShaderCompiler:
+    '''Currently just one static method, but I forsee state, and multiple compiler passes'''
+    @staticmethod
+    def compile(shader_path):
+        print('Compiling shader in godot to find errors...')
+        command = ['godot', '-s', 'compile_shader.gd', f'--shader={shader_path}']
+        compiler = subprocess.Popen(command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE)
+        stdout, stderr = compiler.communicate()
+        stderr_lines = stderr.splitlines(True)
+        print('ERROR: ', stderr_lines[-4:-2])
+
 
 def convert_shadertoy_shaders():
     def is_shader(filepath):
@@ -117,9 +133,13 @@ def convert_shadertoy_shaders():
         
         # Write the shader to a file
         shader = shader.replace('.glsl', '.shader')  # convert to .shader ending
-        with open(os.path.join(new_shader_dir, shader), 'w+') as nf:
+        new_shader_path = os.path.join(new_shader_dir, shader)
+        with open(new_shader_path, 'w+') as nf:
             nf.write(shader_code)
         print(f'\nshader: {shader} - successfully converted')
+        
+        ## turn on and off with a argv flag?
+        GodotShaderCompiler.compile(new_shader_path)
 
 
 if __name__ == '__main__':
