@@ -32,24 +32,24 @@ new_shader_dir = 'shadertoy2godot-shaders'
 if not os.path.exists(new_shader_dir):
     os.makedirs(new_shader_dir)
 
-CONVERSION_TABLE = [
+CONVERSION_TABLE = (
             ('fragColor', 'COLOR'),
             ('fragCoord', 'FRAGCOORD.xy'),
             ('iResolution', '(1.0/SCREEN_PIXEL_SIZE)'),
             ('iTime', 'TIME'),
             ('iChannelResolution[4]', '(1.0/TEXTURE_PIXEL_SIZE)'),
             ('void mainImage.*\n\s*{|void mainImage.*{', 'void fragment() {\n')
-        ]
+        )
 
 # compile the conversion table
 COMPILED_CONVERSION_TABLE = [(re.compile(e[0], flags=re.M), e[1]) for e in CONVERSION_TABLE]
 
 UNIFORM_TABLE = (('iTimeDelta', 'uniform float iTimeDelta;'),
-        ('iFrame', 'uniform float iFrame;',
-        ('iChannelTime\[4\]', 'uniform float iChannelTime[4];',
-        ('iMouse', 'uniform vec4 iMouse;',
-        ('iDate', 'uniform vec4 iDate;',
-        ('iSampleRate', 'uniform float iSampleRate;',
+        ('iFrame', 'uniform float iFrame;'),
+        ('iChannelTime\[4\]', 'uniform float iChannelTime[4];'),
+        ('iMouse', 'uniform vec4 iMouse;'),
+        ('iDate', 'uniform vec4 iDate;'),
+        ('iSampleRate', 'uniform float iSampleRate;'),
         ('iChannel/d', 'uniform sampler2D iChannel%d;'))
 
 def typed_uniform(datatype, name): return f'uniform {datatype} {name};\n'
