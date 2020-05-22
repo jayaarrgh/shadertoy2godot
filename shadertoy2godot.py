@@ -65,7 +65,7 @@ class ShadertoyConverter:
         return self._code
     
     def _comment_ifdefs(self):
-        '''Comments if blocks but not else blocks'''
+        """Comments if blocks but not else blocks"""
         # TODO: another option would be to create a uniform for the if VAR and set it to false
         commenting = False
         _lines = ''
@@ -113,7 +113,7 @@ class ShadertoyConverter:
 
 
 class GodotShaderCompiler:
-    '''Currently just one static method, but I forsee state, and multiple compiler passes'''
+    """Currently just one static method, but I forsee state, and multiple compiler passes"""
     @staticmethod
     def compile(shader_path):
         print('Compiling shader in godot to find errors...')
