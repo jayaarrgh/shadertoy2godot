@@ -54,6 +54,10 @@ UNIFORM_TABLE = (('iTimeDelta', 'uniform float iTimeDelta;'),
 
 def typed_uniform(datatype, name): return f'uniform {datatype} {name};\n'
 
+function_define_regex = re.compile('#define.*\(.*') # has a ( in the line 
+
+define_regex = re.compile('(?!.*[\(])#define.*') # doesnt have a ( in the line
+
 
 class ShadertoyConverter:
     def convert(self, shader_code):
@@ -65,7 +69,7 @@ class ShadertoyConverter:
         return self._code
     
     def _comment_ifdefs(self):
-        """Comments if blocks but not else blocks"""
+        # Comments if blocks but not else blocks
         # TODO: another option would be to create a uniform for the if VAR and set it to false
         commenting = False
         _lines = ''
@@ -91,18 +95,17 @@ class ShadertoyConverter:
     
     # TODO: convert defines or comment out
     def _convert_defines(self):
-        function_define_regex = '#define.*\(.*' # has a ( in the line 
-        define_regex = '(?!.*[\(])#define.*' # doesnt have a ( in the line
         self._use_finditer(function_define_regex, 'found a function define')
         self._use_finditer(define_regex, 'found a define')
 
     def _use_finditer(self, regex, msg):
         '''Just printing matches for now...'''
-        for match in re.finditer(regex, self._code, re.M):
+        for match in regex.finditer(self._code):
             print(f'\n{msg}')
             print(match.start(), match.end())
             print(match.group(0))
-
+            # self._code = f'{self._code[:match.start()]}//{self._code[match.start():]}'
+    
     # TODO: add uniforms for stuff not in CONVERSION_TABLE -- ex: iMouse
     def _collect_and_add_uniforms(self):
        pass
@@ -113,11 +116,10 @@ class ShadertoyConverter:
 
 
 class GodotShaderCompiler:
-    """Currently just one static method, but I forsee state, and multiple compiler passes"""
     @staticmethod
     def compile(shader_path):
         print('Compiling shader in godot to find errors...')
-        command = ['godot', '-s', 'compile_shader.gd', f'--shader={shader_path}']
+        command = ('godot', '-s', 'compile_shader.gd', f'--shader={shader_path}')
         compiler = subprocess.Popen(command,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE)
