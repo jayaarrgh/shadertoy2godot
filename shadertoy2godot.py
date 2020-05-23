@@ -111,9 +111,15 @@ class ShadertoyConverter:
        pass
 
     # TODO: Use GodotShaderCompiler to remove remaining errors
-    def _fix_compiled_errors():
+    def _fix_compiled_errors(self):
         pass
 
+    def _get_channel_uniforms(self):
+        # uncompiled regex here
+        channels = set([m.group(0) for m in re.finditer('iChannel\d', self._code)]) 
+        uniforms = [f'uniform sampler2D {channel};\n' for channel in channels]
+        return uniforms
+            
 
 class GodotShaderCompiler:
     @staticmethod
