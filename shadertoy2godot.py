@@ -64,6 +64,7 @@ class ShadertoyConverter:
         self._code = shader_code
         self._comment_ifdefs()
         self._sub_conversion_table()
+        self._collect_and_add_uniforms()
         self._add_godot_first_line()
         self._convert_defines()
         return self._code
@@ -108,7 +109,13 @@ class ShadertoyConverter:
     
     # TODO: add uniforms for stuff not in CONVERSION_TABLE -- ex: iMouse
     def _collect_and_add_uniforms(self):
-       pass
+        self._code = f'{self._get_channel_uniforms()}{self._code}'
+    
+    def _get_channel_uniforms(self):
+        # uncompiled regex here
+        channels = set([m.group(0) for m in re.finditer('iChannel\d', self._code)]) 
+        uniforms = [f'uniform sampler2D {channel};\n' for channel in channels]
+        return ''.join(uniforms)
 
     # TODO: Use GodotShaderCompiler to remove remaining errors
     def _fix_compiled_errors(self):
