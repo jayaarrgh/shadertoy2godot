@@ -4,18 +4,9 @@ import sys
 import subprocess
 # from glob import glob
 
-## Utility to help convert shader toy to godot .shader files
+## Utility to convert shadertoy code to godot .shader files
 ## Requires: PYTHON 3, godot in PATH
 
-## HOW TO: Copy code from shadertoy into files ending in .shader to get started (what about glsl for glslViewer type files?)
-## This will not alter the file but create a new folder and put "converted" versions in
-
-## Is not a complete solution - merely a helper to do the boring work
-## This just provides a bunch of operations I might as well automate.
-
-#TODO: Mouse (and other UNIFORMS)
-    # Need a special method to add a mouse uniform... and it needs a script...
-    # s = s.replace('iMouse', 'uMouse') and add a uniform
 
 if '--help' in sys.argv or '-h' in sys.argv:
     print('\nhelpful message here... :)\n')
@@ -33,30 +24,28 @@ if not os.path.exists(new_shader_dir):
     os.makedirs(new_shader_dir)
 
 CONVERSION_TABLE = (
-            ('fragColor', 'COLOR'),
-            ('fragCoord', 'FRAGCOORD.xy'),
-            ('iResolution', '(1.0/SCREEN_PIXEL_SIZE)'),
-            ('iTime', 'TIME'),
-            ('iChannelResolution[4]', '(1.0/TEXTURE_PIXEL_SIZE)'),
-            ('void mainImage.*\n\s*{|void mainImage.*{', 'void fragment() {\n')
+        ('fragColor', 'COLOR'),
+        ('fragCoord', 'FRAGCOORD.xy'),
+        ('iResolution', '(1.0/SCREEN_PIXEL_SIZE)'),
+        # TIME is a problem, if iTime is used in functions other than mainImage
+        ('iTime', 'TIME'),
+        ('iChannelResolution[4]', '(1.0/TEXTURE_PIXEL_SIZE)'),
+        ('void mainImage.*\n\s*{|void mainImage.*{', 'void fragment() {\n')
         )
 
 # compile the conversion table
 COMPILED_CONVERSION_TABLE = [(re.compile(e[0], flags=re.M), e[1]) for e in CONVERSION_TABLE]
 
-UNIFORM_TABLE = (('iTimeDelta', 'uniform float iTimeDelta;'),
-        ('iFrame', 'uniform float iFrame;'),
-        ('iChannelTime\[4\]', 'uniform float iChannelTime[4];'),
-        ('iMouse', 'uniform vec4 iMouse;'),
-        ('iDate', 'uniform vec4 iDate;'),
-        ('iSampleRate', 'uniform float iSampleRate;'),
-        ('iChannel/d', 'uniform sampler2D iChannel%d;'))
-
-def typed_uniform(datatype, name): return f'uniform {datatype} {name};\n'
+UNIFORM_TABLE = (('iTimeDelta', 'uniform float iTimeDelta;\n'),
+        ('iFrame', 'uniform float iFrame;\n'),
+        ('iChannelTime\[4\]', 'uniform float iChannelTime[4];\n'),
+        ('iMouse', 'uniform vec4 iMouse;\n'),
+        ('iDate', 'uniform vec4 iDate;\n'),
+        ('iSampleRate', 'uniform float iSampleRate;\n'))
 
 function_define_regex = re.compile('#define.*\(.*') # has a ( in the line 
-
-define_regex = re.compile('(?!.*[\(])#define.*') # doesnt have a ( in the line
+bool_define = re.compile('((?!.*[\(|\d]).*#define.*\n)') # does not have a ( or digit
+digit_define = re.compile('((?!.*[\(]).*#define.*\d)') # has digit
 
 
 class ShadertoyConverter:
@@ -91,36 +80,69 @@ class ShadertoyConverter:
         for shadertoy, godot in COMPILED_CONVERSION_TABLE:
             self._code = shadertoy.sub(godot, self._code) 
 
-    def _add_godot_first_line(self):
-        self._code = f'shader_type canvas_item;\n{self._code}'
-    
-    # TODO: convert defines or comment out
     def _convert_defines(self):
-        self._use_finditer(function_define_regex, 'found a function define')
-        self._use_finditer(define_regex, 'found a define')
+        self._replace_bool_defines()
+        self._replace_digit_defines()
+        self._find_and_comment(function_define_regex)
 
-    def _use_finditer(self, regex, msg):
-        '''Just printing matches for now...'''
+    def _find_and_comment(self, regex):
+        offset = 0
         for match in regex.finditer(self._code):
-            print(f'\n{msg}')
-            print(match.start(), match.end())
-            print(match.group(0))
-            # self._code = f'{self._code[:match.start()]}//{self._code[match.start():]}'
-    
-    # TODO: add uniforms for stuff not in CONVERSION_TABLE -- ex: iMouse
+            g = match.group(0)
+            print(f'Commenting out a function define: ', g)
+            # print(self._code[match.start()+offset:match.end()+offset])
+            self._code = f'{self._code[:match.start()+offset]}//{self._code[match.start()+offset:]}'
+            offset += 2 # add offset because of our addition of //
+  
+    def _replace_digit_defines(self):
+        offset = 0
+        for m in digit_define.finditer(self._code):
+            match = m.group(0)
+            m_len = len(match)
+            match_split = re.split(' ', match)
+            val = match_split[-1]
+            name = match_split[-2]
+            if "." in val:
+                replacement = f'const float {name} = {val};\n'
+                print('Replacing a float define')
+            else:
+                replacement = f'const int {name} = {val};\n'
+                print('Replacing an int define')
+            r_len = len(replacement)
+            self._code = f'{self._code[:m.start() + offset]}{replacement}{self._code[m.end() + offset:]}'
+            offset += r_len - m_len
+        
+    def _replace_bool_defines(self):
+        offset = 0
+        for m in bool_define.finditer(self._code):
+            print('Replacing a bool define')
+            match = m.group(0)
+            m_len = len(match)
+            name = re.split(' ', match)[-1].replace('\n', '')
+            replacement = f'const bool {name} = true;\n' # TODO: set to true if not already commented out!
+            r_len = len(replacement)
+            self._code = f'{self._code[:m.start() + offset]}{replacement}{self._code[m.end() + offset:]}'
+            offset += r_len - m_len
+
     def _collect_and_add_uniforms(self):
         self._code = f'{self._get_channel_uniforms()}{self._code}'
-    
+        self._code = f'{self._get_uniforms_from_table()}{self._code}'
+
+    def _get_uniforms_from_table(self):
+        return ''.join([gd for st, gd in UNIFORM_TABLE if re.search(st, self._code)])
+                
     def _get_channel_uniforms(self):
         # uncompiled regex here
         channels = set([m.group(0) for m in re.finditer('iChannel\d', self._code)]) 
         uniforms = [f'uniform sampler2D {channel};\n' for channel in channels]
         return ''.join(uniforms)
 
+    def _add_godot_first_line(self):
+        self._code = f'shader_type canvas_item;\n{self._code}'
+    
     # TODO: Use GodotShaderCompiler to remove remaining errors
     def _fix_compiled_errors(self):
         pass
-
             
 
 class GodotShaderCompiler:
@@ -135,8 +157,9 @@ class GodotShaderCompiler:
         stderr_lines = stderr.splitlines(True)
         if len(stderr_lines) > 4:
             print('ERROR: ', stderr_lines[-4:-2])
+            print('The shader will still need some manual fixes')
         else:
-            print('No errors found in compilation')
+            print('No errors found during compilation')
 
 
 def convert_shadertoy_shaders():
@@ -151,7 +174,7 @@ def convert_shadertoy_shaders():
     
     for shader in get_shaders():
         shader_path = os.path.join(the_path, shader)
-        print(f'\nopening shader at: {shader_path}')
+        print(f'Opening shader at: {shader_path}')
         with open(shader_path, 'r') as f:
             shader_code = f.read()
         
@@ -163,11 +186,11 @@ def convert_shadertoy_shaders():
         new_shader_path = os.path.join(new_shader_dir, shader)
         with open(new_shader_path, 'w+') as nf:
             nf.write(shader_code)
-        print(f'\nshader: {shader} - successfully converted')
+        print(f'Shader: {shader} - converted')
         
         ## turn on and off with a argv flag?
         GodotShaderCompiler.compile(new_shader_path)
-
+        print()
 
 if __name__ == '__main__':
     convert_shadertoy_shaders()
