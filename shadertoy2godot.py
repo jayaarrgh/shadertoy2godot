@@ -186,10 +186,13 @@ def convert_shadertoy_shaders():
         new_shader_path = os.path.join(new_shader_dir, shader)
         with open(new_shader_path, 'w+') as nf:
             nf.write(shader_code)
-        print(f'Shader: {shader} - converted')
         
-        ## turn on and off with a argv flag?
-        GodotShaderCompiler.compile(new_shader_path)
+        try:
+            GodotShaderCompiler.compile(new_shader_path)
+        except:
+            print('GodotShaderCompiler requires godot in PATH')
+        
+        print(f'Shader: {shader} - converted')
         print()
 
 if __name__ == '__main__':
