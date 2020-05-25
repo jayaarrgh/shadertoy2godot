@@ -8,8 +8,8 @@ class ShadertoyApiError(Exception):
 
 class ShadertoyAPI:
     def __init__(self):
-        api_key = os.environ['SHADERTOY_API_KEY']
-        if not api_key: raise ShadertoyApiError('You must set SHADERTOY_API_KEY with a key from shadertoy.com')
+        api_key = os.environ.get('SHADERTOY_API_KEY')
+        if not api_key: raise ShadertoyApiError('You must set SHADERTOY_API_KEY environment variable with a key from shadertoy.com')
         self.api_key = api_key
 
     def _request_shader(self, shader_id):
