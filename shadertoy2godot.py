@@ -12,10 +12,10 @@ import subprocess
 # TODO: convert instead of commenting #ifdefs
 
 argparser = argparse.ArgumentParser(description='Convert Shadertoy to Godot.')
-argparser.add_argument('-i', help='input path - defaults to working directory')
-argparser.add_argument('-o', help='output path defaults to new folder in current directory')
-argparser.add_argument('--gdcompile', action='store_true', help='skip godot compilation')
-argparser.add_argument('-cid', action='store_true', help='convert if defs')
+argparser.add_argument('-i', help='input path - defaults to current directory')
+argparser.add_argument('-o', help='output path - default to new folder in current directory, or relative path')
+argparser.add_argument('-cid', action='store_true', help='convert if defs - commented out otherwise')
+argparser.add_argument('--gdcompile', action='store_true', help='use godot compilation')
 
 # parse the args
 args = argparser.parse_args()
@@ -23,14 +23,13 @@ args = argparser.parse_args()
 # this logic here isn't needed either
 input_path = args.i if args.i else os.getcwd()
 output_path = args.o if args.o else os.getcwd() + '/shadertoy2godot-shaders/'
+
 gdcompile = args.gdcompile
 cid = args.cid
 
-the_path = input_path
-new_shader_dir = output_path if output_path else 'shadertoy2godot-shaders'
 
-if not os.path.exists(new_shader_dir):
-    os.makedirs(new_shader_dir)
+if not os.path.exists(output_path):
+    os.makedirs(output_path)
 
 CONVERSION_TABLE = (
         ('fragColor', 'COLOR'),
@@ -198,16 +197,15 @@ class GodotShaderCompiler:
 
 def convert_shadertoy_shaders():
     def is_shader(filepath):
-        return os.path.isfile(os.path.join(the_path, filepath)) \
+        return os.path.isfile(os.path.join(input_path, filepath)) \
                 and (filepath.endswith('.shader') or filepath.endswith('.glsl'))
     
-    def get_shaders(): return [f for f in os.listdir(the_path) if is_shader(f)]
-    # shaders = glob(f'{the_path}/*.glsl') + glob(f'{the_path}/*.shader')
+    def get_shaders(): return [f for f in os.listdir(input_path) if is_shader(f)]
     
     converter = ShadertoyConverter()
     
     for shader in get_shaders():
-        shader_path = os.path.join(the_path, shader)
+        shader_path = os.path.join(input_path, shader)
         print(f'Opening shader at: {shader_path}')
         with open(shader_path, 'r') as f:
             shader_code = f.read()
@@ -217,7 +215,7 @@ def convert_shadertoy_shaders():
         
         # Write the shader to a file
         shader = shader.replace('.glsl', '.shader')  # convert to .shader ending
-        new_shader_path = os.path.join(new_shader_dir, shader)
+        new_shader_path = os.path.join(output_path, shader)
         with open(new_shader_path, 'w+') as nf:
             nf.write(shader_code)
         if not gdcompile:
