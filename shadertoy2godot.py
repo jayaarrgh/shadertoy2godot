@@ -1,25 +1,34 @@
 import os
 import re
 import sys
+import argparse
 import subprocess
 # from glob import glob
 
 ## Utility to convert shadertoy code to godot .shader files
 ## Requires: PYTHON 3, godot in PATH
 
+# TODO: make commented bool defines false
+# TODO: convert instead of commenting #ifdefs
 
-if '--help' in sys.argv or '-h' in sys.argv:
-    print('\nhelpful message here... :)\n')
-    raise SystemExit 
+argparser = argparse.ArgumentParser(description='Convert Shadertoy to Godot.')
+argparser.add_argument('-i', help='input path - defaults to working directory')
+argparser.add_argument('-o', help='output path defaults to new folder in current directory')
+argparser.add_argument('--gdcompile', action='store_true', help='skip godot compilation')
+argparser.add_argument('-cid', action='store_true', help='convert if defs')
 
-# RELIES ON COMMAND ARGS OR CURRENT DIR
-try:
-    the_path = sys.argv[1]
-except:
-    the_path = os.getcwd()
+# parse the args
+args = argparser.parse_args()
 
-# this could be argv[2]
-new_shader_dir = 'shadertoy2godot-shaders'
+# this logic here isn't needed either
+input_path = args.i if args.i else os.getcwd()
+output_path = args.o if args.o else os.getcwd() + '/shadertoy2godot-shaders/'
+gdcompile = args.gdcompile
+cid = args.cid
+
+the_path = input_path
+new_shader_dir = output_path if output_path else 'shadertoy2godot-shaders'
+
 if not os.path.exists(new_shader_dir):
     os.makedirs(new_shader_dir)
 
@@ -34,15 +43,17 @@ CONVERSION_TABLE = (
         )
 
 # compile the conversion table
-COMPILED_CONVERSION_TABLE = [(re.compile(e[0], flags=re.M), e[1]) for e in CONVERSION_TABLE]
+COMPILED_CONVERSION_TABLE = tuple((re.compile(e[0], flags=re.M), e[1]) for e in CONVERSION_TABLE)
+del CONVERSION_TABLE
 
-UNIFORM_TABLE = (('iTimeDelta', 'uniform float iTimeDelta;\n'),
-        ('iFrame', 'uniform float iFrame;\n'),
-        ('iChannelTime\[4\]', 'uniform float iChannelTime[4];\n'),
-        ('iMouse', 'uniform vec4 iMouse;\n'),
-        ('iDate', 'uniform vec4 iDate;\n'),
-        ('iSampleRate', 'uniform float iSampleRate;\n'))
+UNIFORM_TABLE = ((re.compile('iTimeDelta'), 'uniform float iTimeDelta;\n'),
+        (re.compile('iFrame'), 'uniform float iFrame;\n'),
+        (re.compile('iChannelTime\[4\]'), 'uniform float iChannelTime[4];\n'),
+        (re.compile('iMouse'), 'uniform vec4 iMouse;\n'),
+        (re.compile('iDate'), 'uniform vec4 iDate;\n'),
+        (re.compile('iSampleRate'), 'uniform float iSampleRate;\n'))
 
+channel_regex = re.compile('iChannel\d')
 function_define_regex = re.compile('#define.*\(.*') # has a ( in the line 
 bool_define = re.compile('((?!.*[\(|\d]).*#define.*\n)') # does not have a ( or digit
 digit_define = re.compile('((?!.*[\(]).*#define.*\d)') # has digit
@@ -51,35 +62,36 @@ digit_define = re.compile('((?!.*[\(]).*#define.*\d)') # has digit
 class ShadertoyConverter:
     def convert(self, shader_code):
         self._code = shader_code
-        self._comment_ifdefs()
+        if cid:
+            self._convert_ifdefs()
+        else:
+            self._comment_ifdefs()
         self._sub_conversion_table()
         self._collect_and_add_uniforms()
         self._add_godot_first_line()
         self._convert_defines()
         return self._code
     
-    def _comment_ifdefs(self):
-        # Comments if blocks but not else blocks
-        # TODO: another option would be to create a uniform for the if VAR and set it to false
-        commenting = False
-        _lines = ''
-        for line in self._code.splitlines(True):
-            if '#if' in line or '#ifdef' in line:
-                commenting = True
-            elif '#endif' in line or '#else' in line:
-                commenting = False
-                _lines += f'// {line}'
-                continue
-            if commenting:
-                _lines += f'// {line}'
-            else:
-                _lines += line
-        self._code = _lines
-    
     def _sub_conversion_table(self):
         for shadertoy, godot in COMPILED_CONVERSION_TABLE:
             self._code = shadertoy.sub(godot, self._code) 
 
+    def _collect_and_add_uniforms(self):
+        self._code = f'{self._get_channel_uniforms()}{self._code}'
+        self._code = f'{self._get_uniforms_from_table()}{self._code}'
+    
+    def _get_uniforms_from_table(self):
+        return ''.join([gd for st, gd in UNIFORM_TABLE if re.search(st, self._code)])
+    
+    def _get_channel_uniforms(self):
+        # channels = set([m.group(0) for m in re.finditer('iChannel\d', self._code)]) 
+        channels = set([m.group(0) for m in channel_regex.finditer(self._code)]) 
+        uniforms = [f'uniform sampler2D {channel};\n' for channel in channels]
+        return ''.join(uniforms)
+    
+    def _add_godot_first_line(self):
+        self._code = f'shader_type canvas_item;\n{self._code}'
+    
     def _convert_defines(self):
         self._replace_bool_defines()
         self._replace_digit_defines()
@@ -98,7 +110,6 @@ class ShadertoyConverter:
         offset = 0
         for m in digit_define.finditer(self._code):
             match = m.group(0)
-            m_len = len(match)
             match_split = re.split(' ', match)
             val = match_split[-1]
             name = match_split[-2]
@@ -108,8 +119,9 @@ class ShadertoyConverter:
             else:
                 replacement = f'const int {name} = {val};\n'
                 print('Replacing an int define')
-            r_len = len(replacement)
             self._code = f'{self._code[:m.start() + offset]}{replacement}{self._code[m.end() + offset:]}'
+            r_len = len(replacement)
+            m_len = len(match)
             offset += r_len - m_len
         
     def _replace_bool_defines(self):
@@ -117,29 +129,51 @@ class ShadertoyConverter:
         for m in bool_define.finditer(self._code):
             print('Replacing a bool define')
             match = m.group(0)
-            m_len = len(match)
             name = re.split(' ', match)[-1].replace('\n', '')
             replacement = f'const bool {name} = true;\n' # TODO: set to true if not already commented out!
-            r_len = len(replacement)
             self._code = f'{self._code[:m.start() + offset]}{replacement}{self._code[m.end() + offset:]}'
+            r_len = len(replacement)
+            m_len = len(match)
             offset += r_len - m_len
 
-    def _collect_and_add_uniforms(self):
-        self._code = f'{self._get_channel_uniforms()}{self._code}'
-        self._code = f'{self._get_uniforms_from_table()}{self._code}'
+    def _comment_ifdefs(self):
+        # Comments if blocks but not else blocks
+        # TODO: another option would be to create a uniform for the if VAR and set it to false
+        commenting = False
+        _lines = ''
+        for line in self._code.splitlines(True):
+            if '#if' in line or '#ifdef' in line:
+                commenting = True
+            elif '#endif' in line or '#else' in line:
+                commenting = False
+                _lines += f'// {line}'
+                continue
+            if commenting:
+                _lines += f'// {line}'
+            else:
+                _lines += line
+        self._code = _lines
+   
+    def _convert_ifdefs(self):
+        # replace  #ifdef and #if  -->  "if ({name})\n{\n"
+        # replace  #endif          -->  "}"
+        # replace  #else           -->  "}\nelse\n{"
+        _lines = ''
+        for line in self._code.splitlines(True):
+            if '#ifdef' in line:
+                variable = line.split('#ifdef')[1].replace('\n', '') # second element should be the name
+                _lines += f'if ({variable})\n{{\n'
+            elif '#if' in line:
+                variable = line.split('#if')[1].replace('\n', '') # second element should be the name
+                _lines += f'if ({variable})\n{{\n'
+            elif '#endif' in line:
+                _lines += '}\n'
+            elif '#else' in line:
+                _lines += '}\nelse\n{\n'
+            else:
+                _lines += line
+        self._code = _lines
 
-    def _get_uniforms_from_table(self):
-        return ''.join([gd for st, gd in UNIFORM_TABLE if re.search(st, self._code)])
-                
-    def _get_channel_uniforms(self):
-        # uncompiled regex here
-        channels = set([m.group(0) for m in re.finditer('iChannel\d', self._code)]) 
-        uniforms = [f'uniform sampler2D {channel};\n' for channel in channels]
-        return ''.join(uniforms)
-
-    def _add_godot_first_line(self):
-        self._code = f'shader_type canvas_item;\n{self._code}'
-    
     # TODO: Use GodotShaderCompiler to remove remaining errors
     def _fix_compiled_errors(self):
         pass
@@ -186,11 +220,13 @@ def convert_shadertoy_shaders():
         new_shader_path = os.path.join(new_shader_dir, shader)
         with open(new_shader_path, 'w+') as nf:
             nf.write(shader_code)
-        
-        try:
-            GodotShaderCompiler.compile(new_shader_path)
-        except:
-            print('GodotShaderCompiler requires godot in PATH')
+        if not gdcompile:
+            print('skipping godot compilation - use --gdcompile flag to compile')
+        else:
+            try:
+                GodotShaderCompiler.compile(new_shader_path)
+            except:
+                print('GodotShaderCompiler requires godot in PATH')
         
         print(f'Shader: {shader} - converted')
         print()
