@@ -8,13 +8,12 @@ This script creates a folder in current working directory with converted .shader
 
 	OR  
 
-	you can provide a path to the program via the first argument.
+	you can provide other flags and arguments
 	
-	`python shadertoy2godot path-to-my-shadertoy-shader-folder`
+	`python shadertoy2godot.py -i ../my/shadertoy/folder -o new_folder --gdcompile -cid`
 
-
+For help use: `python shadertoy2godot.py -h`
 
 # TODO (Future improvement)
 - Convert #define F() --Functional defines are currently commented out
-- Currently commenting out #ifdef to #endif -- instead use created const in the if
-- Create another script to integrate shadertoy api
+- Create another script/arg to integrate shadertoy api
